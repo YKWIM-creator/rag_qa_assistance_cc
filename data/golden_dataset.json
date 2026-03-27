@@ -1,0 +1,14 @@
+[
+  {
+    "question": "What majors does Baruch College offer?",
+    "ground_truth": "Baruch College offers majors in business, liberal arts, and sciences through its three schools."
+  },
+  {
+    "question": "Where is Hunter College located?",
+    "ground_truth": "Hunter College is located in Manhattan, New York City."
+  },
+  {
+    "question": "Does CUNY offer financial aid?",
+    "ground_truth": "Yes, CUNY offers financial aid including federal, state, and institutional aid programs."
+  }
+]
