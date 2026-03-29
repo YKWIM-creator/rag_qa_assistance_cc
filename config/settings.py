@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     scraper_rate_limit_delay: float = Field(default=1.0, env="SCRAPER_RATE_LIMIT_DELAY")
     scraper_max_retries: int = Field(default=3, env="SCRAPER_MAX_RETRIES")
     scraper_timeout: int = Field(default=10, env="SCRAPER_TIMEOUT")
+    scraper_db_path: str = Field(default="./scraper_cache/scraper.db", env="SCRAPER_DB_PATH")
 
     # API
     api_host: str = Field(default="0.0.0.0", env="API_HOST")
