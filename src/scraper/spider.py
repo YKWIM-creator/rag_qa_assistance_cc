@@ -52,9 +52,6 @@ async def crawl_school(school: str, start_url: str, max_pages: int = 500) -> lis
             if url is None:
                 break
 
-            # Mark in-progress immediately to avoid re-processing on crash
-            db.mark(url, "scraped")
-
             if should_skip_url(url):
                 db.mark(url, "skipped")
                 continue

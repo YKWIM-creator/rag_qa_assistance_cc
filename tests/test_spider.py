@@ -26,7 +26,7 @@ async def test_crawl_school_returns_scraped_pages(tmp_path):
     mock_response.text = html
 
     with patch("src.scraper.spider.settings") as mock_settings, \
-         patch("httpx.AsyncClient") as mock_client_class, \
+         patch("src.scraper.spider.httpx.AsyncClient") as mock_client_class, \
          patch("src.scraper.spider.asyncio.sleep", new_callable=AsyncMock):
 
         mock_settings.scraper_timeout = 10
@@ -54,7 +54,7 @@ async def test_crawl_school_skips_failed_urls(tmp_path):
     mock_response.status_code = 404
 
     with patch("src.scraper.spider.settings") as mock_settings, \
-         patch("httpx.AsyncClient") as mock_client_class, \
+         patch("src.scraper.spider.httpx.AsyncClient") as mock_client_class, \
          patch("src.scraper.spider.asyncio.sleep", new_callable=AsyncMock):
 
         mock_settings.scraper_timeout = 10
