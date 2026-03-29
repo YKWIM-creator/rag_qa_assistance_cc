@@ -11,3 +11,5 @@ vectorstore/
 data/raw/
 data/processed/
 config/__pycache__/
+.worktrees/
+scraper_cache/
