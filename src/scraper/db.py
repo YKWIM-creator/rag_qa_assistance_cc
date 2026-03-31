@@ -25,6 +25,7 @@ class ScraperDB:
                 title        TEXT,
                 markdown     TEXT,
                 content_hash TEXT,
+                page_type    TEXT NOT NULL DEFAULT 'general',
                 scraped_at   TEXT
             );
         """)
@@ -54,12 +55,14 @@ class ScraperDB:
         ).fetchone()
         return row is not None
 
-    def save_page(self, url: str, school: str, title: str, markdown: str, content_hash: str):
+    def save_page(self, url: str, school: str, title: str, markdown: str,
+                  content_hash: str, page_type: str = "general"):
         now = datetime.now(timezone.utc).isoformat()
         self.conn.execute(
-            """INSERT OR REPLACE INTO pages (url, school, title, markdown, content_hash, scraped_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (url, school, title, markdown, content_hash, now),
+            """INSERT OR REPLACE INTO pages
+               (url, school, title, markdown, content_hash, page_type, scraped_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (url, school, title, markdown, content_hash, page_type, now),
         )
         self.conn.commit()
 
