@@ -30,7 +30,14 @@ def rewrite_query(question: str, llm) -> RewrittenQuery:
         response = llm.invoke(prompt)
         content = response.content if hasattr(response, "content") else str(response)
         # Strip markdown code fences if present
-        content = content.strip().strip("```json").strip("```").strip()
+        content = content.strip()
+        if content.startswith("```json"):
+            content = content[7:]
+        elif content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        content = content.strip()
         data = json.loads(content)
         return RewrittenQuery(
             query=data.get("query", question),

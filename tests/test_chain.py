@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from src.generation.providers import get_llm
-from src.generation.chain import build_rag_chain, RAGResponse
+from src.generation.chain import RAGResponse
 
 
 def test_get_llm_openai():
@@ -19,13 +19,6 @@ def test_get_llm_unknown_raises():
         mock_settings.llm_provider = "unknown"
         with pytest.raises(ValueError, match="Unknown LLM provider"):
             get_llm()
-
-
-def test_build_rag_chain_returns_chain():
-    mock_retriever = MagicMock()
-    mock_llm = MagicMock()
-    chain = build_rag_chain(mock_retriever, mock_llm)
-    assert chain is not None
 
 
 def test_rag_response_has_required_fields():
@@ -78,27 +71,33 @@ def test_ask_uses_rewriter(monkeypatch):
     mock_rw.assert_called_once()
 
 
-def test_ask_clears_stale_filter():
+def test_ask_with_school_uses_filtered_retriever():
     from src.generation.chain import ask
     from unittest.mock import MagicMock, patch, create_autospec
     from src.generation.rewriter import RewrittenQuery
+    from src.retrieval.retriever import get_retriever
     from langchain_core.language_models import BaseChatModel
     from langchain_core.messages import AIMessage
 
     mock_doc = MagicMock()
-    mock_doc.page_content = "Some content."
-    mock_doc.metadata = {"url": "http://example.com", "school": "hunter",
-                         "title": "T", "page_type": "general", "section_heading": "S"}
+    mock_doc.page_content = "Baruch info."
+    mock_doc.metadata = {"url": "http://b.edu", "school": "baruch",
+                         "title": "T", "page_type": "admissions", "section_heading": "S"}
 
+    mock_vectorstore = MagicMock()
     mock_retriever = MagicMock()
-    mock_retriever.search_kwargs = {"filter": {"school": "baruch"}}  # stale filter
-    mock_retriever.invoke.return_value = [mock_doc]
+    mock_retriever.vectorstore = mock_vectorstore
+
+    mock_filtered_retriever = MagicMock()
+    mock_filtered_retriever.invoke.return_value = [mock_doc]
 
     mock_llm = create_autospec(BaseChatModel, instance=True)
-    mock_llm.invoke.return_value = AIMessage(content="Some answer.")
+    mock_llm.invoke.return_value = AIMessage(content="You need a 3.0 GPA.")
 
-    with patch("src.generation.chain.rewrite_query") as mock_rw:
-        mock_rw.return_value = RewrittenQuery(query="general question", school=None)
-        ask("what are CUNY programs", mock_retriever, mock_llm)
+    with patch("src.generation.chain.rewrite_query") as mock_rw, \
+         patch("src.generation.chain.get_retriever", return_value=mock_filtered_retriever) as mock_gr:
+        mock_rw.return_value = RewrittenQuery(query="Baruch admissions", school="baruch")
+        result = ask("how do i get into baruch", mock_retriever, mock_llm)
 
-    assert "filter" not in mock_retriever.search_kwargs
+    mock_gr.assert_called_once_with(mock_vectorstore, metadata_filter={"school": "baruch"})
+    assert result.answer == "You need a 3.0 GPA."

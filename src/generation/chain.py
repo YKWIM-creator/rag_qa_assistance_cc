@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 from langchain.prompts import PromptTemplate
-from langchain.schema.runnable import RunnablePassthrough
 from langchain.schema.output_parser import StrOutputParser
 
 from src.generation.rewriter import rewrite_query
+from src.retrieval.retriever import get_retriever
 
 
 PROMPT_TEMPLATE = """You are a CUNY student assistant. Answer the question using ONLY the context below.
@@ -37,31 +37,18 @@ def _format_docs(docs) -> str:
     return "\n\n---\n\n".join(parts)
 
 
-def build_rag_chain(retriever, llm):
-    """Build a LangChain RAG chain from a retriever and LLM."""
-    prompt = PromptTemplate.from_template(PROMPT_TEMPLATE)
-    chain = (
-        {"context": retriever | _format_docs, "question": RunnablePassthrough()}
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
-    return chain
-
-
 def ask(question: str, retriever, llm) -> RAGResponse:
     """Run RAG pipeline: rewrite query → retrieve → generate → return answer + sources."""
     # Rewrite query and extract school
     rewritten = rewrite_query(question, llm)
 
-    # Apply or clear school filter
-    if hasattr(retriever, "search_kwargs"):
-        if rewritten.school:
-            retriever.search_kwargs["filter"] = {"school": rewritten.school}
-        else:
-            retriever.search_kwargs.pop("filter", None)
+    # Create a scoped retriever per call to avoid shared-state mutation across concurrent requests
+    active_retriever = retriever
+    if hasattr(retriever, "vectorstore"):
+        metadata_filter = {"school": rewritten.school} if rewritten.school else None
+        active_retriever = get_retriever(retriever.vectorstore, metadata_filter=metadata_filter)
 
-    docs = retriever.invoke(rewritten.query)
+    docs = active_retriever.invoke(rewritten.query)
 
     if not docs:
         return RAGResponse(

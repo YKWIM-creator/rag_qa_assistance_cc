@@ -44,3 +44,13 @@ def test_rewrite_query_falls_back_on_bad_json():
 
     assert result.query == "original question"
     assert result.school is None
+
+
+def test_rewrite_query_handles_fenced_json():
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value.content = '```json\n{"school": "john_jay", "query": "John Jay admissions requirements"}\n```'
+
+    result = rewrite_query("how do i get into john jay", mock_llm)
+
+    assert result.school == "john_jay"
+    assert "john" in result.query.lower()
