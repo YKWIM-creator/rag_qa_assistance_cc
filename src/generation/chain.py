@@ -3,10 +3,14 @@ from langchain.prompts import PromptTemplate
 from langchain.schema.runnable import RunnablePassthrough
 from langchain.schema.output_parser import StrOutputParser
 
+from src.generation.rewriter import rewrite_query
+
 
 PROMPT_TEMPLATE = """You are a CUNY student assistant. Answer the question using ONLY the context below.
+Each context block is labeled with [School | page type | section].
+If the question asks about a specific school, prioritize blocks from that school.
 If the answer is not found in the context, say: "I don't have information about that in the CUNY documents I've indexed."
-Be concise and helpful.
+Be concise and cite the school name in your answer.
 
 Context:
 {context}
@@ -23,7 +27,14 @@ class RAGResponse:
 
 
 def _format_docs(docs) -> str:
-    return "\n\n---\n\n".join(doc.page_content for doc in docs)
+    parts = []
+    for doc in docs:
+        school = doc.metadata.get("school", "unknown").title()
+        page_type = doc.metadata.get("page_type", "general")
+        heading = doc.metadata.get("section_heading", doc.metadata.get("title", ""))
+        label = f"[{school} | {page_type} | {heading}]"
+        parts.append(f"{label}\n{doc.page_content}")
+    return "\n\n---\n\n".join(parts)
 
 
 def build_rag_chain(retriever, llm):
@@ -39,9 +50,18 @@ def build_rag_chain(retriever, llm):
 
 
 def ask(question: str, retriever, llm) -> RAGResponse:
-    """Run RAG pipeline for a question, return answer + sources."""
-    # Get docs for sources
-    docs = retriever.invoke(question)
+    """Run RAG pipeline: rewrite query → retrieve → generate → return answer + sources."""
+    # Rewrite query and extract school
+    rewritten = rewrite_query(question, llm)
+
+    # Apply or clear school filter
+    if hasattr(retriever, "search_kwargs"):
+        if rewritten.school:
+            retriever.search_kwargs["filter"] = {"school": rewritten.school}
+        else:
+            retriever.search_kwargs.pop("filter", None)
+
+    docs = retriever.invoke(rewritten.query)
 
     if not docs:
         return RAGResponse(
@@ -49,8 +69,11 @@ def ask(question: str, retriever, llm) -> RAGResponse:
             sources=[],
         )
 
-    chain = build_rag_chain(retriever, llm)
-    answer = chain.invoke(question)
+    # Retrieve once and build a simple chain with pre-formatted context
+    context = _format_docs(docs)
+    prompt = PromptTemplate.from_template(PROMPT_TEMPLATE)
+    chain = prompt | llm | StrOutputParser()
+    answer = chain.invoke({"context": context, "question": rewritten.query})
 
     sources = [
         {
@@ -60,8 +83,7 @@ def ask(question: str, retriever, llm) -> RAGResponse:
         }
         for doc in docs
     ]
-    # Deduplicate sources by URL
-    seen_urls = set()
+    seen_urls: set[str] = set()
     unique_sources = []
     for s in sources:
         if s["url"] not in seen_urls:
