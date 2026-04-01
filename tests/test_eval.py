@@ -5,6 +5,7 @@ import tempfile
 import os
 from src.evaluation.eval import load_golden_dataset, format_ragas_dataset
 from src.evaluation.eval import init_eval_db, save_eval_run, load_last_run
+from src.evaluation.eval import print_eval_diff
 
 
 def test_load_golden_dataset():
@@ -70,3 +71,27 @@ def test_load_last_run_returns_none_when_empty():
         assert load_last_run(db_path) is None
     finally:
         os.unlink(db_path)
+
+
+def test_print_eval_diff_shows_new_on_first_run(capsys):
+    scores = {"faithfulness": 0.85, "answer_relevancy": 0.74,
+              "context_recall": 0.78, "context_precision": 0.80,
+              "answer_correctness": 0.72}
+    print_eval_diff(current=scores, previous=None, run_id=1, git_commit="abc1234")
+    captured = capsys.readouterr()
+    assert "faithfulness" in captured.out
+    assert "new" in captured.out
+
+
+def test_print_eval_diff_shows_delta(capsys):
+    prev = {"faithfulness": 0.80, "answer_relevancy": 0.76,
+            "context_recall": 0.70, "context_precision": 0.70,
+            "answer_correctness": 0.65}
+    curr = {"faithfulness": 0.85, "answer_relevancy": 0.74,
+            "context_recall": 0.78, "context_precision": 0.80,
+            "answer_correctness": 0.72}
+    print_eval_diff(current=curr, previous=prev, run_id=2, git_commit="def5678")
+    captured = capsys.readouterr()
+    assert "+0.05" in captured.out or "+0.0500" in captured.out
+    assert "↑" in captured.out
+    assert "↓" in captured.out

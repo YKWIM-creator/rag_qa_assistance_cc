@@ -73,6 +73,38 @@ def _get_git_commit() -> str:
         return "unknown"
 
 
+METRICS = [
+    "faithfulness",
+    "answer_relevancy",
+    "context_recall",
+    "context_precision",
+    "answer_correctness",
+]
+
+
+def print_eval_diff(current: dict, previous: dict | None, run_id: int, git_commit: str) -> None:
+    """Print a formatted table comparing current vs previous eval run."""
+    col_w = 21
+    print(f"\nRun #{run_id}  (commit: {git_commit})")
+    print("┌" + "─" * col_w + "┬────────┬────────┬──────────┐")
+    print(f"│ {'Metric':<{col_w - 2}} │  Prev  │  Now   │  Δ       │")
+    print("├" + "─" * col_w + "┼────────┼────────┼──────────┤")
+    for metric in METRICS:
+        now = current.get(metric)
+        prev_val = previous.get(metric) if previous else None
+        now_str = f"{now:.2f}" if now is not None else "  —  "
+        if prev_val is None:
+            prev_str = "  —  "
+            delta_str = "new"
+        else:
+            prev_str = f"{prev_val:.2f}"
+            delta = now - prev_val
+            arrow = "↑" if delta >= 0 else "↓"
+            delta_str = f"{delta:+.4f}{arrow}"
+        print(f"│ {metric:<{col_w - 2}} │ {prev_str:>6} │ {now_str:>6} │ {delta_str:<8} │")
+    print("└" + "─" * col_w + "┴────────┴────────┴──────────┘")
+
+
 def load_golden_dataset(path: str) -> list[dict]:
     with open(path) as f:
         return json.load(f)
