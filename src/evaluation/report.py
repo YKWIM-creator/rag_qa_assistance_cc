@@ -1,7 +1,7 @@
 import contextlib
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 
 from config.settings import settings
 
@@ -36,7 +36,7 @@ def generate_report(db_path: str | None = None, report_dir: str | None = None) -
         raise ValueError("No eval runs found in database.")
 
     latest = runs[0]
-    timestamp = datetime.utcnow().strftime("%Y-%m-%d-%H-%M")
+    timestamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d-%H-%M")
     report_path = os.path.join(report_dir, f"{timestamp}-eval-report.md")
 
     lines = []
