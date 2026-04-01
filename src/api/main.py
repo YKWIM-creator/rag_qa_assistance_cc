@@ -2,12 +2,12 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
 
 from config.settings import settings
-from src.generation.chain import ask, RAGResponse
+from src.generation.chain import ask
 from src.generation.providers import get_llm
 from src.ingestion.embedder import get_embedding_model
+from src.models import QuestionRequest, AnswerResponse, RAGResponse
 from src.retrieval.retriever import load_vectorstore, get_retriever
 
 logger = logging.getLogger(__name__)
@@ -36,15 +36,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-class QuestionRequest(BaseModel):
-    question: str = Field(..., min_length=1, max_length=1000)
-
-
-class AnswerResponse(BaseModel):
-    answer: str
-    sources: list[dict]
 
 
 @app.get("/health")
