@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
-from src.generation.rewriter import rewrite_query, RewrittenQuery
+from src.generation.rewriter import rewrite_query
+from src.models import RewrittenQuery
 
 
 def test_rewritten_query_dataclass():

@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from src.scraper.spider import ScrapedPage, crawl_school
+from src.scraper.spider import crawl_school
+from src.models import ScrapedPage
 
 
 def test_scraped_page_has_required_fields():

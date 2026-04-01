@@ -1,6 +1,6 @@
 import pytest
 from src.ingestion.chunker import chunk_page
-from src.scraper.spider import ScrapedPage
+from src.models import ScrapedPage
 
 
 def make_page(text: str, url: str = "http://test.com", school: str = "test",

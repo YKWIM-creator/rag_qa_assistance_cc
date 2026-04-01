@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from src.generation.providers import get_llm
-from src.generation.chain import RAGResponse
+from src.models import RAGResponse
 
 
 def test_get_llm_openai():
