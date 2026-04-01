@@ -137,3 +137,42 @@ def test_run_evaluation_saves_to_db_and_returns_scores():
         assert last["num_samples"] == 3  # golden_dataset.json has 3 entries
     finally:
         os.unlink(db_path)
+
+
+def test_run_evaluation_generates_report():
+    import tempfile, os
+    from unittest.mock import patch, MagicMock
+    from src.evaluation.eval import run_evaluation
+
+    mock_retriever = MagicMock()
+    mock_retriever.invoke.return_value = [
+        MagicMock(page_content="CUNY is the City University of New York.", metadata={})
+    ]
+    mock_llm = MagicMock()
+    mock_response = MagicMock()
+    mock_response.answer = "CUNY stands for City University of New York."
+    mock_ragas_result = {
+        "faithfulness": 0.85, "answer_relevancy": 0.74,
+        "context_recall": 0.78, "context_precision": 0.80,
+        "answer_correctness": 0.72,
+    }
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    report_dir = tempfile.mkdtemp()
+
+    try:
+        with patch("src.evaluation.eval.ask", return_value=mock_response), \
+             patch("src.evaluation.eval.evaluate", return_value=mock_ragas_result), \
+             patch("src.evaluation.eval._get_git_commit", return_value="test123"):
+            run_evaluation(
+                mock_retriever, mock_llm,
+                golden_path="data/golden_dataset.json",
+                db_path=db_path,
+                report_dir=report_dir,
+            )
+        reports = os.listdir(report_dir)
+        assert len(reports) == 1
+        assert reports[0].endswith("-eval-report.md")
+    finally:
+        os.unlink(db_path)

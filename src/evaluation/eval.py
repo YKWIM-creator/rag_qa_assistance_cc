@@ -15,6 +15,7 @@ from ragas.metrics import (
 )
 from config.settings import settings as _settings
 from src.generation.chain import ask
+from src.evaluation.report import generate_report
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,7 @@ def run_evaluation(
     llm,
     golden_path: str = "data/golden_dataset.json",
     db_path: str | None = None,
+    report_dir: str | None = None,
 ) -> dict:
     """Run RAGAS evaluation on the golden dataset. Persists results to SQLite."""
     if db_path is None:
@@ -177,6 +179,9 @@ def run_evaluation(
     last = load_last_run(db_path)
     run_id = last["id"] if last else 1
     print_eval_diff(current=scores, previous=previous, run_id=run_id, git_commit=git_commit)
+
+    report_path = generate_report(db_path=db_path, report_dir=report_dir)
+    logger.info(f"Eval report saved to {report_path}")
 
     logger.info(f"RAGAS results: {scores}")
     return scores
