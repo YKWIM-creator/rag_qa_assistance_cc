@@ -57,3 +57,22 @@ def test_clear_school(db):
     db.clear_school("school_a")
     assert db.next_pending() is None
     assert db.get_pages_for_school("school_a") == []
+
+
+def test_save_page_with_page_type(db):
+    db.save_page(
+        url="http://example.com/admissions",
+        school="test",
+        title="Admissions",
+        markdown="# Admissions",
+        content_hash="h1",
+        page_type="admissions",
+    )
+    pages = db.get_pages_for_school("test")
+    assert pages[0]["page_type"] == "admissions"
+
+
+def test_save_page_defaults_page_type_to_general(db):
+    db.save_page("http://example.com/x", "test", "X", "# X", "h2")
+    pages = db.get_pages_for_school("test")
+    assert pages[0]["page_type"] == "general"

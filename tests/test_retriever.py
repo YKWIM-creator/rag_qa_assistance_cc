@@ -28,3 +28,13 @@ def test_get_retriever_returns_langchain_retriever():
     retriever = get_retriever(mock_vectorstore, k=3)
     mock_vectorstore.as_retriever.assert_called_once()
     assert retriever is not None
+
+
+def test_get_retriever_accepts_metadata_filter():
+    from unittest.mock import MagicMock
+    mock_vs = MagicMock()
+    mock_vs.as_retriever.return_value = MagicMock()
+    retriever = get_retriever(mock_vs, k=5, metadata_filter={"school": "baruch"})
+    call_kwargs = mock_vs.as_retriever.call_args[1]
+    assert call_kwargs["search_kwargs"]["filter"] == {"school": "baruch"}
+    assert call_kwargs["search_kwargs"]["fetch_k"] == 25

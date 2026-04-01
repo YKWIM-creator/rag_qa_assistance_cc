@@ -38,9 +38,12 @@ def load_vectorstore(embedding_model) -> Chroma:
     )
 
 
-def get_retriever(vectorstore: Chroma, k: int = 5):
+def get_retriever(vectorstore: Chroma, k: int = 5, metadata_filter: dict = None):
     """Return a LangChain MMR retriever from a ChromaDB vector store."""
+    search_kwargs = {"k": k, "fetch_k": k * 5}
+    if metadata_filter:
+        search_kwargs["filter"] = metadata_filter
     return vectorstore.as_retriever(
         search_type="mmr",
-        search_kwargs={"k": k, "fetch_k": k * 3},
+        search_kwargs=search_kwargs,
     )
