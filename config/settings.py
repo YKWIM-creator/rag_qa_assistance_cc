@@ -26,6 +26,18 @@ class Settings(BaseSettings):
     api_host: str = Field(default="0.0.0.0", env="API_HOST")
     api_port: int = Field(default=8000, env="API_PORT")
 
+    # Evaluation
+    eval_db_path: str = Field(default="data/eval_results.db", env="EVAL_DB_PATH")
+    eval_report_dir: str = Field(default="docs/eval_reports", env="EVAL_REPORT_DIR")
+    eval_candidates_dir: str = Field(default="data/golden_dataset_candidates", env="EVAL_CANDIDATES_DIR")
+
+    # Pass/fail thresholds
+    eval_threshold_faithfulness: float = Field(default=0.80, env="EVAL_THRESHOLD_FAITHFULNESS")
+    eval_threshold_answer_relevancy: float = Field(default=0.75, env="EVAL_THRESHOLD_ANSWER_RELEVANCY")
+    eval_threshold_context_recall: float = Field(default=0.70, env="EVAL_THRESHOLD_CONTEXT_RECALL")
+    eval_threshold_context_precision: float = Field(default=0.70, env="EVAL_THRESHOLD_CONTEXT_PRECISION")
+    eval_threshold_answer_correctness: float = Field(default=0.65, env="EVAL_THRESHOLD_ANSWER_CORRECTNESS")
+
     # CUNY senior colleges
     cuny_senior_colleges: dict = {
         "baruch": "https://www.baruch.cuny.edu",
