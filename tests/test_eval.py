@@ -108,8 +108,8 @@ def test_run_evaluation_saves_to_db_and_returns_scores():
     ]
     mock_llm = MagicMock()
 
-    mock_response = MagicMock()
-    mock_response.answer = "CUNY stands for City University of New York."
+    mock_chain = MagicMock()
+    mock_chain.invoke.return_value = "CUNY stands for City University of New York."
 
     mock_ragas_result = {
         "faithfulness": 0.85,
@@ -122,7 +122,7 @@ def test_run_evaluation_saves_to_db_and_returns_scores():
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = f.name
     try:
-        with patch("src.evaluation.eval.ask", return_value=mock_response), \
+        with patch("src.evaluation.eval.build_rag_chain", return_value=mock_chain), \
              patch("src.evaluation.eval.evaluate", return_value=mock_ragas_result), \
              patch("src.evaluation.eval._get_git_commit", return_value="test123"):
             result = run_evaluation(
@@ -149,8 +149,8 @@ def test_run_evaluation_generates_report():
         MagicMock(page_content="CUNY is the City University of New York.", metadata={})
     ]
     mock_llm = MagicMock()
-    mock_response = MagicMock()
-    mock_response.answer = "CUNY stands for City University of New York."
+    mock_chain = MagicMock()
+    mock_chain.invoke.return_value = "CUNY stands for City University of New York."
     mock_ragas_result = {
         "faithfulness": 0.85, "answer_relevancy": 0.74,
         "context_recall": 0.78, "context_precision": 0.80,
@@ -159,20 +159,19 @@ def test_run_evaluation_generates_report():
 
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = f.name
-    report_dir = tempfile.mkdtemp()
-
-    try:
-        with patch("src.evaluation.eval.ask", return_value=mock_response), \
-             patch("src.evaluation.eval.evaluate", return_value=mock_ragas_result), \
-             patch("src.evaluation.eval._get_git_commit", return_value="test123"):
-            run_evaluation(
-                mock_retriever, mock_llm,
-                golden_path="data/golden_dataset.json",
-                db_path=db_path,
-                report_dir=report_dir,
-            )
-        reports = os.listdir(report_dir)
-        assert len(reports) == 1
-        assert reports[0].endswith("-eval-report.md")
-    finally:
-        os.unlink(db_path)
+    with tempfile.TemporaryDirectory() as report_dir:
+        try:
+            with patch("src.evaluation.eval.build_rag_chain", return_value=mock_chain), \
+                 patch("src.evaluation.eval.evaluate", return_value=mock_ragas_result), \
+                 patch("src.evaluation.eval._get_git_commit", return_value="test123"):
+                run_evaluation(
+                    mock_retriever, mock_llm,
+                    golden_path="data/golden_dataset.json",
+                    db_path=db_path,
+                    report_dir=report_dir,
+                )
+            reports = os.listdir(report_dir)
+            assert len(reports) == 1
+            assert reports[0].endswith("-eval-report.md")
+        finally:
+            os.unlink(db_path)

@@ -14,7 +14,7 @@ from ragas.metrics import (
     answer_correctness,
 )
 from config.settings import settings as _settings
-from src.generation.chain import ask
+from src.generation.chain import build_rag_chain
 from src.evaluation.report import generate_report
 
 logger = logging.getLogger(__name__)
@@ -141,12 +141,20 @@ def run_evaluation(
     for item in golden:
         question = item["question"]
         ground_truth = item["ground_truth"]
-        response = ask(question, retriever, llm)
+
+        # Single retrieval — used for both RAG answer and RAGAS contexts
         docs = retriever.invoke(question)
         contexts = [doc.page_content for doc in docs]
+
+        if not docs:
+            answer = "I don't have information about that in the CUNY documents I've indexed."
+        else:
+            chain = build_rag_chain(retriever, llm)
+            answer = chain.invoke(question)
+
         samples.append({
             "question": question,
-            "answer": response.answer,
+            "answer": answer,
             "contexts": contexts,
             "ground_truth": ground_truth,
         })

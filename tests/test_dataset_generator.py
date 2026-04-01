@@ -37,6 +37,7 @@ def test_load_candidates_returns_list():
     with tempfile.TemporaryDirectory() as candidates_dir:
         data = [{"question": "Q1", "ground_truth": "A1"}]
         path = os.path.join(candidates_dir, "baruch.json")
-        json.dump(data, open(path, "w"))
+        with open(path, "w") as f:
+            json.dump(data, f)
         result = load_candidates("baruch", candidates_dir=candidates_dir)
         assert result == data
