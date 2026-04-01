@@ -1,5 +1,5 @@
 from langchain.text_splitter import RecursiveCharacterTextSplitter, MarkdownHeaderTextSplitter
-from src.scraper.spider import ScrapedPage
+from src.models import ScrapedPage
 
 _HEADER_SPLITTER = MarkdownHeaderTextSplitter(
     headers_to_split_on=[

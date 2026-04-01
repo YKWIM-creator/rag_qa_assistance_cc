@@ -1,5 +1,5 @@
 import logging
-from src.scraper.spider import ScrapedPage
+from src.models import ScrapedPage
 from src.ingestion.chunker import chunk_page
 from src.retrieval.retriever import build_vectorstore
 
