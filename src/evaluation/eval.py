@@ -1,10 +1,78 @@
 import json
 import logging
+import sqlite3
+import subprocess
+from datetime import datetime
 from datasets import Dataset
 from ragas import evaluate
 from ragas.metrics import faithfulness, answer_relevancy, context_recall
 
 logger = logging.getLogger(__name__)
+
+
+def init_eval_db(db_path: str) -> None:
+    """Create the eval_runs table if it doesn't exist."""
+    conn = sqlite3.connect(db_path)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS eval_runs (
+            id                  INTEGER PRIMARY KEY,
+            run_at              TEXT NOT NULL,
+            git_commit          TEXT,
+            num_samples         INTEGER,
+            faithfulness        REAL,
+            answer_relevancy    REAL,
+            context_recall      REAL,
+            context_precision   REAL,
+            answer_correctness  REAL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def save_eval_run(db_path: str, git_commit: str, num_samples: int, scores: dict) -> None:
+    """Persist one evaluation run to SQLite."""
+    init_eval_db(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """INSERT INTO eval_runs
+           (run_at, git_commit, num_samples, faithfulness, answer_relevancy,
+            context_recall, context_precision, answer_correctness)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            datetime.utcnow().isoformat(),
+            git_commit,
+            num_samples,
+            scores.get("faithfulness"),
+            scores.get("answer_relevancy"),
+            scores.get("context_recall"),
+            scores.get("context_precision"),
+            scores.get("answer_correctness"),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def load_last_run(db_path: str) -> dict | None:
+    """Return the most recent eval run as a dict, or None if no runs exist."""
+    init_eval_db(db_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute(
+        "SELECT * FROM eval_runs ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def _get_git_commit() -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], text=True
+        ).strip()
+    except Exception:
+        return "unknown"
 
 
 def load_golden_dataset(path: str) -> list[dict]:
