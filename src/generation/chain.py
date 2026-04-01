@@ -1,8 +1,8 @@
-from dataclasses import dataclass
 from langchain.prompts import PromptTemplate
 from langchain.schema.output_parser import StrOutputParser
 
 from src.generation.rewriter import rewrite_query
+from src.models import RAGResponse
 from src.retrieval.retriever import get_retriever
 
 
@@ -18,12 +18,6 @@ Context:
 Question: {question}
 
 Answer:"""
-
-
-@dataclass
-class RAGResponse:
-    answer: str
-    sources: list[dict]
 
 
 def _format_docs(docs) -> str:
