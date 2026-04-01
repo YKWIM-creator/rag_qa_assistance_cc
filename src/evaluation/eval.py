@@ -1,10 +1,117 @@
+import contextlib
 import json
 import logging
+import sqlite3
+import subprocess
+from datetime import datetime, timezone
 from datasets import Dataset
 from ragas import evaluate
-from ragas.metrics import faithfulness, answer_relevancy, context_recall
+from ragas.metrics import (
+    faithfulness,
+    answer_relevancy,
+    context_recall,
+    context_precision,
+    answer_correctness,
+)
+from config.settings import settings as _settings
+from src.generation.chain import build_rag_chain
+from src.evaluation.report import generate_report
 
 logger = logging.getLogger(__name__)
+
+
+def init_eval_db(db_path: str) -> None:
+    """Create the eval_runs table if it doesn't exist."""
+    with contextlib.closing(sqlite3.connect(db_path)) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS eval_runs (
+                id                  INTEGER PRIMARY KEY,
+                run_at              TEXT NOT NULL,
+                git_commit          TEXT,
+                num_samples         INTEGER,
+                faithfulness        REAL,
+                answer_relevancy    REAL,
+                context_recall      REAL,
+                context_precision   REAL,
+                answer_correctness  REAL
+            )
+        """)
+        conn.commit()
+
+
+def save_eval_run(db_path: str, git_commit: str, num_samples: int, scores: dict) -> None:
+    """Persist one evaluation run to SQLite."""
+    init_eval_db(db_path)
+    with contextlib.closing(sqlite3.connect(db_path)) as conn:
+        conn.execute(
+            """INSERT INTO eval_runs
+               (run_at, git_commit, num_samples, faithfulness, answer_relevancy,
+                context_recall, context_precision, answer_correctness)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                datetime.now(tz=timezone.utc).isoformat(),
+                git_commit,
+                num_samples,
+                scores.get("faithfulness"),
+                scores.get("answer_relevancy"),
+                scores.get("context_recall"),
+                scores.get("context_precision"),
+                scores.get("answer_correctness"),
+            ),
+        )
+        conn.commit()
+
+
+def load_last_run(db_path: str) -> dict | None:
+    """Return the most recent eval run as a dict, or None if no runs exist."""
+    init_eval_db(db_path)
+    with contextlib.closing(sqlite3.connect(db_path)) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM eval_runs ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def _get_git_commit() -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], text=True
+        ).strip()
+    except Exception:
+        return "unknown"
+
+
+METRICS = [
+    "faithfulness",
+    "answer_relevancy",
+    "context_recall",
+    "context_precision",
+    "answer_correctness",
+]
+
+
+def print_eval_diff(current: dict, previous: dict | None, run_id: int, git_commit: str) -> None:
+    """Print a formatted table comparing current vs previous eval run."""
+    col_w = 21
+    print(f"\nRun #{run_id}  (commit: {git_commit})")
+    print("┌" + "─" * col_w + "┬────────┬────────┬──────────┐")
+    print(f"│ {'Metric':<{col_w - 2}} │  Prev  │  Now   │  Δ       │")
+    print("├" + "─" * col_w + "┼────────┼────────┼──────────┤")
+    for metric in METRICS:
+        now = current.get(metric)
+        prev_val = previous.get(metric) if previous else None
+        now_str = f"{now:.2f}" if now is not None else "  —  "
+        if prev_val is None:
+            prev_str = "  —  "
+            delta_str = "new"
+        else:
+            prev_str = f"{prev_val:.2f}"
+            delta = now - prev_val
+            arrow = "↑" if delta >= 0 else "↓"
+            delta_str = f"{delta:+.4f}{arrow}"
+        print(f"│ {metric:<{col_w - 2}} │ {prev_str:>6} │ {now_str:>6} │ {delta_str:<8} │")
+    print("└" + "─" * col_w + "┴────────┴────────┴──────────┘")
 
 
 def load_golden_dataset(path: str) -> list[dict]:
@@ -17,9 +124,16 @@ def format_ragas_dataset(samples: list[dict]) -> Dataset:
     return Dataset.from_list(samples)
 
 
-def run_evaluation(retriever, llm, golden_path: str = "data/golden_dataset.json") -> dict:
-    """Run RAGAS evaluation on the golden dataset."""
-    from src.generation.chain import ask
+def run_evaluation(
+    retriever,
+    llm,
+    golden_path: str = "data/golden_dataset.json",
+    db_path: str | None = None,
+    report_dir: str | None = None,
+) -> dict:
+    """Run RAGAS evaluation on the golden dataset. Persists results to SQLite."""
+    if db_path is None:
+        db_path = _settings.eval_db_path
 
     golden = load_golden_dataset(golden_path)
     samples = []
@@ -28,19 +142,54 @@ def run_evaluation(retriever, llm, golden_path: str = "data/golden_dataset.json"
         question = item["question"]
         ground_truth = item["ground_truth"]
 
-        # Get RAG response
-        response = ask(question, retriever, llm)
+        # Single retrieval — used for both RAG answer and RAGAS contexts
         docs = retriever.invoke(question)
         contexts = [doc.page_content for doc in docs]
 
+        if not docs:
+            answer = "I don't have information about that in the CUNY documents I've indexed."
+        else:
+            chain = build_rag_chain(retriever, llm)
+            answer = chain.invoke(question)
+
         samples.append({
             "question": question,
-            "answer": response.answer,
+            "answer": answer,
             "contexts": contexts,
             "ground_truth": ground_truth,
         })
 
     dataset = format_ragas_dataset(samples)
-    results = evaluate(dataset, metrics=[faithfulness, answer_relevancy, context_recall])
-    logger.info(f"RAGAS results: {results}")
-    return results
+    ragas_result = evaluate(
+        dataset,
+        metrics=[
+            faithfulness,
+            answer_relevancy,
+            context_recall,
+            context_precision,
+            answer_correctness,
+        ],
+    )
+
+    scores = {
+        "faithfulness": float(ragas_result["faithfulness"]),
+        "answer_relevancy": float(ragas_result["answer_relevancy"]),
+        "context_recall": float(ragas_result["context_recall"]),
+        "context_precision": float(ragas_result["context_precision"]),
+        "answer_correctness": float(ragas_result["answer_correctness"]),
+    }
+
+    previous = load_last_run(db_path)
+    git_commit = _get_git_commit()
+
+    save_eval_run(db_path, git_commit=git_commit, num_samples=len(samples), scores=scores)
+
+    last = load_last_run(db_path)
+    run_id = last["id"] if last else 1
+    print_eval_diff(current=scores, previous=previous, run_id=run_id, git_commit=git_commit)
+
+    report_path = generate_report(db_path=db_path, report_dir=report_dir)
+    logger.info(f"Eval report saved to {report_path}")
+
+    logger.info(f"RAGAS results: {scores}")
+    return scores

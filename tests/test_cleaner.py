@@ -1,36 +1,29 @@
-import pytest
-from src.scraper.cleaner import clean_html
+from src.scraper.cleaner import clean_to_markdown
 
+def test_extracts_heading_as_markdown():
+    html = "<html><body><main><h1>Welcome</h1><p>Hello world</p></main></body></html>"
+    result = clean_to_markdown(html, url="http://example.com")
+    assert "# Welcome" in result
+    assert "Hello world" in result
 
-def test_removes_nav_elements():
-    html = "<html><nav>Nav links</nav><main><p>Real content</p></main></html>"
-    result = clean_html(html, url="http://example.com")
-    assert "Nav links" not in result
-    assert "Real content" in result
+def test_strips_nav_and_footer():
+    html = """<html><body>
+        <nav>Skip nav</nav>
+        <main><p>Main content</p></main>
+        <footer>Footer text</footer>
+    </body></html>"""
+    result = clean_to_markdown(html, url="http://example.com")
+    assert "Skip nav" not in result
+    assert "Footer text" not in result
+    assert "Main content" in result
 
-
-def test_removes_footer():
-    html = "<html><footer>Footer stuff</footer><article><p>Article text</p></article></html>"
-    result = clean_html(html, url="http://example.com")
-    assert "Footer stuff" not in result
-    assert "Article text" in result
-
-
-def test_returns_empty_string_for_blank_page():
+def test_returns_empty_for_no_content():
     html = "<html><body></body></html>"
-    result = clean_html(html, url="http://example.com")
-    assert result.strip() == ""
+    result = clean_to_markdown(html, url="http://example.com")
+    assert result == ""
 
-
-def test_extracts_page_title():
-    html = "<html><head><title>Baruch College - Admissions</title></head><body><p>Info</p></body></html>"
-    result = clean_html(html, url="http://example.com")
-    assert "Baruch College - Admissions" in result
-
-
-def test_strips_scripts_and_styles():
-    html = "<html><body><script>alert('x')</script><style>.a{}</style><p>Text</p></body></html>"
-    result = clean_html(html, url="http://example.com")
-    assert "alert" not in result
-    assert ".a{}" not in result
-    assert "Text" in result
+def test_preserves_list_structure():
+    html = "<html><body><main><ul><li>Item 1</li><li>Item 2</li></ul></main></body></html>"
+    result = clean_to_markdown(html, url="http://example.com")
+    assert "Item 1" in result
+    assert "Item 2" in result

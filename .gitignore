@@ -13,3 +13,8 @@ data/processed/
 config/__pycache__/
 .worktrees/
 scraper_cache/
+
+# Eval artifacts
+data/eval_results.db
+data/golden_dataset_candidates/
+docs/eval_reports/*.md
