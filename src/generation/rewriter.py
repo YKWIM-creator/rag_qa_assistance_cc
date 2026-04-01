@@ -1,7 +1,7 @@
 import json
 import logging
-from dataclasses import dataclass
-from typing import Optional
+
+from src.models import RewrittenQuery
 
 logger = logging.getLogger(__name__)
 
@@ -15,12 +15,6 @@ Given a user question, return a JSON object with:
 Question: {question}
 
 Return ONLY valid JSON. Example: {{"school": "baruch", "query": "Baruch College undergraduate admissions requirements GPA"}}"""
-
-
-@dataclass
-class RewrittenQuery:
-    query: str
-    school: Optional[str]
 
 
 def rewrite_query(question: str, llm) -> RewrittenQuery:
