@@ -13,16 +13,17 @@ The assistant scrapes public pages from CUNY senior college websites, indexes th
 ```
 config/          # Settings via pydantic-settings
 src/
-  scraper/       # Async BFS web crawler + HTML cleaner
+  scraper/       # Async BFS web crawler + HTML cleaner + page classifier
   ingestion/     # Text chunker, embedding provider, ingestion pipeline
   retrieval/     # ChromaDB vector store + MMR retriever
-  generation/    # LLM provider abstraction + RAG chain
+  generation/    # LLM provider abstraction + query rewriter + RAG chain
   api/           # FastAPI backend
-  evaluation/    # RAGAS evaluation pipeline
+  evaluation/    # RAGAS evaluation pipeline + dataset generator + report writer
 scripts/         # run_scrape.py — CLI to trigger scraping
 ui/              # Streamlit chat UI
-tests/           # Unit tests (28 tests, all passing)
+tests/           # Unit tests (51 tests, all passing)
 data/            # golden_dataset.json for evaluation
+eval_reports/    # Auto-generated Markdown evaluation reports
 ```
 
 ## Quickstart
@@ -60,6 +61,9 @@ python scripts/run_scrape.py --school baruch --max-pages 50
 
 # Scrape all 11 CUNY senior colleges
 python scripts/run_scrape.py --max-pages 500
+
+# Force re-scrape (clears cached pages for the school before crawling)
+python scripts/run_scrape.py --school baruch --force-rescrape
 ```
 
 Supported schools: `baruch`, `brooklyn`, `city`, `hunter`, `john_jay`, `lehman`, `medgar_evers`, `nycct`, `queens`, `staten_island`, `york`
@@ -105,16 +109,28 @@ streamlit run ui/app.py
 }
 ```
 
+## RAG Pipeline
+
+Each question flows through five steps:
+
+1. **Query rewriting** (`src/generation/rewriter.py`) — The LLM extracts the target school (if any) and rewrites the question into retrieval-optimized academic language.
+2. **Retrieval** (`src/retrieval/retriever.py`) — MMR retriever (k=5) queries ChromaDB, optionally scoped to the extracted school via a metadata filter.
+3. **Context formatting** (`src/generation/chain.py`) — Retrieved chunks are labeled `[School | page_type | section]` so the LLM knows which college each block comes from.
+4. **Generation** (`src/generation/chain.py`) — An LCEL chain formats the prompt and invokes the LLM. Falls back to a "no information" response if retrieval returns nothing.
+5. **Source deduplication** — Returned source URLs are deduplicated before the `RAGResponse` is returned.
+
+The scraper also classifies each page (`src/scraper/classifier.py`) into one of five content types (`admissions`, `academics`, `financial_aid`, `student_services`, `general`) based on URL path and h1 text, attaching the result as `page_type` metadata on each chunk.
+
 ## Running Tests
 
 ```bash
 pytest tests/ -v
-# 28 passed
+# 51 passed
 ```
 
 ## Evaluation
 
-Run RAGAS metrics (faithfulness, answer relevancy, context recall) against the golden dataset:
+### Running RAGAS metrics
 
 ```bash
 python -c "
@@ -130,6 +146,37 @@ llm = get_llm()
 results = run_evaluation(retriever, llm)
 print(results)
 "
+```
+
+Each run is persisted to SQLite and compared against the previous run:
+
+```
+Run #3  (commit: 657a22c)
+┌─────────────────────┬────────┬────────┬──────────┐
+│ Metric              │  Prev  │  Now   │  Δ       │
+├─────────────────────┼────────┼────────┼──────────┤
+│ faithfulness        │   0.82 │   0.85 │ +0.0300↑ │
+│ answer_relevancy    │   0.78 │   0.80 │ +0.0200↑ │
+│ context_recall      │   0.71 │   0.74 │ +0.0300↑ │
+│ context_precision   │   0.69 │   0.72 │ +0.0300↑ │
+│ answer_correctness  │   0.76 │   0.79 │ +0.0300↑ │
+└─────────────────────┴────────┴────────┴──────────┘
+```
+
+A Markdown report is written to `eval_reports/` after each run.
+
+Target thresholds: faithfulness ≥ 0.8, answer_relevancy ≥ 0.75.
+
+### Building the golden dataset
+
+Use the semi-automated dataset generator to generate and review QA pairs from scraped pages:
+
+```bash
+# Generate QA candidates from raw markdown files for a school
+python -m src.evaluation.dataset_generator --generate --school baruch
+
+# Interactively approve, edit, or skip candidates → appends to golden_dataset.json
+python -m src.evaluation.dataset_generator --review --school baruch
 ```
 
 ## LLM Providers
