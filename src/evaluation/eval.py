@@ -6,7 +6,15 @@ import subprocess
 from datetime import datetime, timezone
 from datasets import Dataset
 from ragas import evaluate
-from ragas.metrics import faithfulness, answer_relevancy, context_recall
+from ragas.metrics import (
+    faithfulness,
+    answer_relevancy,
+    context_recall,
+    context_precision,
+    answer_correctness,
+)
+from config.settings import settings as _settings
+from src.generation.chain import ask
 
 logger = logging.getLogger(__name__)
 
@@ -115,9 +123,15 @@ def format_ragas_dataset(samples: list[dict]) -> Dataset:
     return Dataset.from_list(samples)
 
 
-def run_evaluation(retriever, llm, golden_path: str = "data/golden_dataset.json") -> dict:
-    """Run RAGAS evaluation on the golden dataset."""
-    from src.generation.chain import ask
+def run_evaluation(
+    retriever,
+    llm,
+    golden_path: str = "data/golden_dataset.json",
+    db_path: str | None = None,
+) -> dict:
+    """Run RAGAS evaluation on the golden dataset. Persists results to SQLite."""
+    if db_path is None:
+        db_path = _settings.eval_db_path
 
     golden = load_golden_dataset(golden_path)
     samples = []
@@ -125,12 +139,9 @@ def run_evaluation(retriever, llm, golden_path: str = "data/golden_dataset.json"
     for item in golden:
         question = item["question"]
         ground_truth = item["ground_truth"]
-
-        # Get RAG response
         response = ask(question, retriever, llm)
         docs = retriever.invoke(question)
         contexts = [doc.page_content for doc in docs]
-
         samples.append({
             "question": question,
             "answer": response.answer,
@@ -139,6 +150,33 @@ def run_evaluation(retriever, llm, golden_path: str = "data/golden_dataset.json"
         })
 
     dataset = format_ragas_dataset(samples)
-    results = evaluate(dataset, metrics=[faithfulness, answer_relevancy, context_recall])
-    logger.info(f"RAGAS results: {results}")
-    return results
+    ragas_result = evaluate(
+        dataset,
+        metrics=[
+            faithfulness,
+            answer_relevancy,
+            context_recall,
+            context_precision,
+            answer_correctness,
+        ],
+    )
+
+    scores = {
+        "faithfulness": float(ragas_result["faithfulness"]),
+        "answer_relevancy": float(ragas_result["answer_relevancy"]),
+        "context_recall": float(ragas_result["context_recall"]),
+        "context_precision": float(ragas_result["context_precision"]),
+        "answer_correctness": float(ragas_result["answer_correctness"]),
+    }
+
+    previous = load_last_run(db_path)
+    git_commit = _get_git_commit()
+
+    save_eval_run(db_path, git_commit=git_commit, num_samples=len(samples), scores=scores)
+
+    last = load_last_run(db_path)
+    run_id = last["id"] if last else 1
+    print_eval_diff(current=scores, previous=previous, run_id=run_id, git_commit=git_commit)
+
+    logger.info(f"RAGAS results: {scores}")
+    return scores

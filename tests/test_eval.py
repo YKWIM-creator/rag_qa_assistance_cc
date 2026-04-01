@@ -95,3 +95,45 @@ def test_print_eval_diff_shows_delta(capsys):
     assert "+0.05" in captured.out or "+0.0500" in captured.out
     assert "↑" in captured.out
     assert "↓" in captured.out
+
+
+from unittest.mock import patch, MagicMock
+from src.evaluation.eval import run_evaluation
+
+
+def test_run_evaluation_saves_to_db_and_returns_scores():
+    mock_retriever = MagicMock()
+    mock_retriever.invoke.return_value = [
+        MagicMock(page_content="CUNY is the City University of New York.", metadata={})
+    ]
+    mock_llm = MagicMock()
+
+    mock_response = MagicMock()
+    mock_response.answer = "CUNY stands for City University of New York."
+
+    mock_ragas_result = {
+        "faithfulness": 0.85,
+        "answer_relevancy": 0.74,
+        "context_recall": 0.78,
+        "context_precision": 0.80,
+        "answer_correctness": 0.72,
+    }
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    try:
+        with patch("src.evaluation.eval.ask", return_value=mock_response), \
+             patch("src.evaluation.eval.evaluate", return_value=mock_ragas_result), \
+             patch("src.evaluation.eval._get_git_commit", return_value="test123"):
+            result = run_evaluation(
+                mock_retriever, mock_llm,
+                golden_path="data/golden_dataset.json",
+                db_path=db_path,
+            )
+        assert "faithfulness" in result
+        last = load_last_run(db_path)
+        assert last is not None
+        assert last["git_commit"] == "test123"
+        assert last["num_samples"] == 3  # golden_dataset.json has 3 entries
+    finally:
+        os.unlink(db_path)
