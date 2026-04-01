@@ -2,7 +2,6 @@ import asyncio
 import hashlib
 import logging
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from urllib.parse import urljoin, urlparse
 
@@ -10,22 +9,13 @@ import httpx
 from bs4 import BeautifulSoup
 
 from config.settings import settings
+from src.models import ScrapedPage
 from src.scraper.classifier import classify_page
 from src.scraper.cleaner import clean_to_markdown
 from src.scraper.db import ScraperDB
 from src.scraper.filters import should_skip_url
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class ScrapedPage:
-    url: str
-    school: str
-    text: str        # set to markdown — backward-compatible with ingestion pipeline
-    title: str = ""
-    page_type: str = "general"
-    scraped_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 async def fetch_sitemap_urls(base_url: str, timeout: int = 10) -> list[str]:
