@@ -44,6 +44,12 @@ python scripts/run_scrape.py --school baruch --force-rescrape
 
 ## Architecture
 
+**Shared data types** live in `src/models.py` — import from here, not from the individual modules:
+- `ScrapedPage` — scraper output (url, school, text as Markdown, title, page_type, scraped_at)
+- `RewrittenQuery` — query rewriter output (query, school)
+- `RAGResponse` — chain output (answer, sources)
+- `QuestionRequest` / `AnswerResponse` — FastAPI request/response schemas
+
 Data flows through five sequential stages:
 
 **1. Scraper** (`src/scraper/`)
@@ -63,8 +69,9 @@ Data flows through five sequential stages:
 - `get_retriever()` returns an MMR retriever (k=5) to reduce redundancy.
 
 **4. Generation** (`src/generation/`)
+- `rewriter.py`: LLM call that extracts the target school and rewrites the question into retrieval-optimized academic language. Returns `RewrittenQuery`.
 - `providers.py`: Returns the appropriate LangChain LLM (OpenAI `gpt-4o`, Anthropic `claude-3-5-sonnet-20241022`, or Ollama), all at temperature=0.
-- `chain.py`: Core RAG logic — retrieves docs, formats context, invokes LLM via LCEL chain. If no docs are retrieved, returns a fallback "no information" response. Returns `RAGResponse(answer, sources)` with deduplicated source URLs.
+- `chain.py`: Core RAG logic — rewrites query → retrieves with optional school metadata filter → formats context labeled `[School | page_type | section]` → invokes LLM via LCEL chain. Falls back to "no information" if retrieval returns nothing. Returns `RAGResponse` with deduplicated source URLs.
 
 **5. API & UI** (`src/api/main.py`, `ui/app.py`)
 - FastAPI loads all components at startup via lifespan context. Endpoints: `GET /health`, `POST /ask`, `GET /sources`.
@@ -84,7 +91,7 @@ RAGAS pipeline in `src/evaluation/eval.py` runs against `data/golden_dataset.jso
 
 ## Testing Notes
 
-- 51 tests across 12 modules — all should pass.
+- 81 tests across 13 modules — all should pass (excluding `test_eval.py` which has a pre-existing collection error unrelated to unit logic).
 - Tests use `pytest-mock` and `pytest-asyncio`; async tests require `@pytest.mark.asyncio`.
 - The spider and API tests mock HTTP calls; no network access required to run tests.
 - Spider tests patch `src.scraper.spider.httpx.AsyncClient` (not the top-level `httpx.AsyncClient`).
